@@ -1,0 +1,14 @@
+name = "todo-worker"
+compatibility_date = "2025-11-11"
+main = "src/index.js"
+type="javascript"
+
+[env]
+# nothing here — bind your D1 database and other bindings in your wrangler dev/publish config
+
+
+# Example
+[[d1_databases]]
+binding = "mydb"
+database_name = "ecommerce_task_db"
+database_id = "46d1d640-172d-4cfc-bd91-fba867c60733"

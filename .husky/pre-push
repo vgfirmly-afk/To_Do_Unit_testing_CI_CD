@@ -1,0 +1,16 @@
+
+# npm run format
+
+# # # Lint the codebase to ensure code quality
+# npm run lint
+
+# # Install dependencies in CI mode to ensure a clean state
+# npm ci --prefer-offline --no-audit --no-fund
+
+# Run the test-percentage check script. If it exits non-zero, push is blocked.
+node scripts/check-tests-percentage.js || {
+  echo "Pre-push check failed: test pass percentage below required threshold."
+  exit 1
+}
+
+

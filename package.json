@@ -2,15 +2,6 @@
   "name": "todo-worker",
   "version": "1.0.0",
   "type": "module",
-  "lint-staged": {
-    "*.{js,ts,jsx,tsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,md,css}": [
-      "prettier --write"
-    ]
-  },
   "scripts": {
     "start": "wrangler dev",
     "check": "npm run lint && npm test",
@@ -18,7 +9,6 @@
     "coverage": "npx c8 --reporter=html --reporter=text mocha --recursive --exit",
     "prepare": "husky",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
     "format:check": "prettier --check .",
     "format:write": "prettier --write .",
     "format": "prettier --write ."

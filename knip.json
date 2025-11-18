@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+
+  "ignore": {
+    "files": ["scripts/check-tests-percentage.js"],
+    "dependencies": ["wrangler", "c8"],
+    "devDependencies": ["@istanbuljs/nyc-config-babel", "nyc"],
+    "exports": ["src/db.js"]
+  }
+}

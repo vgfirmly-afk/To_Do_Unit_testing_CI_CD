@@ -11,19 +11,20 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "format:write": "prettier --write .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "knip": "knip"
   },
   "dependencies": {
     "itty-router": "^2.5.3",
-    "joi": "^18.0.1",
-    "lint": "^1.1.2"
+    "joi": "^18.0.1"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.1.0",
+    "@commitlint/config-conventional": "^20.0.0",
     "chai": "^4.3.7",
-    "cross-env": "^7.0.3",
     "eslint": "^9.39.1",
     "husky": "^9.1.7",
-    "lint-staged": "^16.2.6",
+    "knip": "^5.69.1",
     "mocha": "^10.2.0",
     "nyc": "^15.1.0",
     "prettier": "^3.6.2",

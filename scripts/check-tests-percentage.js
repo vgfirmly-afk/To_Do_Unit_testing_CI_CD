@@ -4,7 +4,7 @@
 
 // const { exec } = require("child_process");
 // const path = require("path");
-import path from "path";
+// import path from "path";
 import { exec } from "child_process";
 
 const requiredPercent = Number(process.env.REQUIRED_PERCENT ?? 80);
@@ -30,6 +30,7 @@ function runMochaJson() {
         return resolve(json);
       } catch (parseErr) {
         // If parsing fails, include stdout/err to help debugging
+        console.log(parseErr);
         const message = [
           "Failed to parse mocha JSON output.",
           "Raw stdout:",

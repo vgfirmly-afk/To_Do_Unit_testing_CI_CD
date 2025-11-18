@@ -16,10 +16,10 @@ npm run lint
 
 npm test
 
-# npm run knip
+npm run knip
 
 # Run knip LAST because it is the slowest and most likely to fail
-npm run knip || {
-  echo "Knip check failed: unused files/exports/deps detected."
-  exit 1
-}
+# npm run knip || {
+#   echo "Knip check failed: unused files/exports/deps detected."
+#   exit 1
+# }

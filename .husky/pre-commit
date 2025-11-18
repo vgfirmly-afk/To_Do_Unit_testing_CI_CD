@@ -17,6 +17,24 @@ npm run lint
 echo "Running tests..."
 npm test
 
+# node scripts/check-tests-percentage.js || {
+#   echo "Pre-push check failed: test pass percentage below required threshold."
+#   exit 1
+# }
+
+#!/bin/sh
+
+# Run tests → get the "All files" row → extract 4 columns → check each ≥ 90
+npx nyc --reporter=text mocha --recursive --exit \
+  | grep -E "^\s*All files" \
+  | awk '{print $3,$4,$5,$6}' \
+  | tr -d '%' \
+  | awk '{exit !($1>=90 && $2>=90 && $3>=90 && $4>=90)}' \
+  || { echo "❌ Coverage below 90% — push blocked"; exit 1; }
+
+echo "✅ Coverage OK — push allowed"
+
+
 echo "Checking for unused files/dependencies..."
 npm run knip
 

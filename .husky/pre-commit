@@ -27,17 +27,29 @@ echo "Running tests..."
 #!/usr/bin/env bash
 # ...existing code...
 echo "Running coverage check..."
+# OUT="$(mktemp)"
+# npm run coverage:check 2>&1 | tee "$OUT"
+# RC=${PIPESTATUS[0]}
+# # print first occurrence of each metric (Statements/Branches/Functions/Lines)
+# grep -E 'Statements|Branches|Functions|Lines' "$OUT" | awk '!seen[$1]++' | sed 's/^[[:space:]]*//'
+# rm -f "$OUT"
+# if [ $RC -ne 0 ]; then
+#   echo "❌ Coverage below required thresholds — commit blocked"
+#   exit 1
+# fi
+# echo "✅ Coverage OK"
+
 OUT="$(mktemp)"
-npm run coverage:check 2>&1 | tee "$OUT"
-RC=${PIPESTATUS[0]}
-# print first occurrence of each metric (Statements/Branches/Functions/Lines)
-grep -E 'Statements|Branches|Functions|Lines' "$OUT" | awk '!seen[$1]++' | sed 's/^[[:space:]]*//'
+npm run coverage:check >"$OUT" 2>&1
+RC=$?
+# now parse "$OUT" (grep/awk/sed) and decide based on RC
 rm -f "$OUT"
 if [ $RC -ne 0 ]; then
   echo "❌ Coverage below required thresholds — commit blocked"
   exit 1
 fi
 echo "✅ Coverage OK"
+
 # ...existing code...
 
 

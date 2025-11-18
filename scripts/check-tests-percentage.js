@@ -96,3 +96,52 @@ function runMochaJson() {
     process.exit(1);
   }
 })();
+
+// # npm run coverage
+
+// echo "Checking test coverage..."
+
+// # Run coverage and capture its stdout/stderr into a variable, then print it
+// echo "Generating coverage..."
+// COVERAGE_OUTPUT="$(npm run coverage 2>&1)"
+
+// # Try to extract the "Lines" percentage from the coverage output without reading files.
+// # Primary approach: find the "All files" row (jest/nyc table) and take the last column (Lines).
+// LINE="$(printf "%s\n" "$COVERAGE_OUTPUT" | grep -i -E '^\s*All files' | head -1)"
+
+// if [ -n "$LINE" ]; then
+//   # normalize separators, collapse spaces, take last field, remove possible % sign
+//   CLEAN_LINE="$(printf "%s\n" "$LINE" | tr '|' ' ' | sed 's/  */ /g' | sed 's/^ *//;s/ *$//')"
+//   COVERAGE_PCT="$(printf "%s\n" "$CLEAN_LINE" | awk '{print $NF}' | tr -d '%')"
+// fi
+
+// # # Fallback: grep a "Lines ...%" pattern (other reporters)
+// # if [ -z "$COVERAGE_PCT" ]; then
+// #   COVERAGE_PCT="$(printf "%s\n" "$COVERAGE_OUTPUT" | grep -i -Eo 'Lines[^0-9%]*[0-9]+(\.[0-9]+)?%' | grep -Eo '[0-9]+(\.[0-9]+)?' | head -1)"
+// # fi
+
+// # # Another fallback to any percent number if still missing (take first percent-looking number)
+// # if [ -z "$COVERAGE_PCT" ]; then
+// #   COVERAGE_PCT="$(printf "%s\n" "$COVERAGE_OUTPUT" | grep -Eo '[0-9]+(\.[0-9]+)?%' | tr -d '%' | head -1)"
+// # fi
+
+// # default to 0 if we couldn't parse anything
+// # if [ -z "$COVERAGE_PCT" ]; then
+// #   COVERAGE_PCT="0"
+// # fi
+
+// echo "Coverage (lines): ${COVERAGE_PCT}%"
+
+// # threshold (default 10, override with COVERAGE_THRESHOLD env var)
+// THRESHOLD="${COVERAGE_THRESHOLD:-90}"
+// echo "Required threshold: ${THRESHOLD}%"
+
+// # compare as floats using awk
+// OK="$(awk -v a="$COVERAGE_PCT" -v b="$THRESHOLD" 'BEGIN{if (a+0 >= b+0) print 1; else print 0}')"
+
+// if [ "$OK" -ne 1 ]; then
+//   echo "❌ Coverage ${COVERAGE_PCT}% is below required ${THRESHOLD}% — commit blocked"
+//   exit 1
+// fi
+
+// echo "✅ Coverage ${COVERAGE_PCT}% meets threshold ${THRESHOLD}% — commit allowed"

@@ -2,4 +2,22 @@
 # . "$(dirname "$0")/h"
 
 
-npx --no-install commitlint --edit "$1"
+# npx --no-install commitlint --edit "$1"
+
+#!/bin/sh
+
+commit_message=$(cat "$1")
+pattern="^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?: \[#[0-9]+\] .{1,50}$"
+
+if ! [[ $commit_message =~ $pattern ]]; then
+  echo "Invalid commit message format."
+  echo "Please use the following format:"
+  echo "type(scope?): description"
+  echo ""
+  echo "Example: feat(auth): add login functionality"
+  echo ""
+  echo "Allowed types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert"
+  exit 1
+fi
+
+echo "Commit message format is valid."

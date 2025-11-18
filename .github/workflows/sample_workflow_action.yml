@@ -7,7 +7,7 @@ on:
   #   branches:
   #     - main
 jobs:
-  check-bats-version:
+  sample_workflow_action_job:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

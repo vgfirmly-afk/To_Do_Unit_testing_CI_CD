@@ -2,7 +2,7 @@ name: sample_workflow_action
 on:
   push:
     branches:
-      - [ '**']
+      - "**"
   # pull_request:
   #   branches:
   #     - main

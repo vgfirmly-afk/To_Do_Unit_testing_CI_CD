@@ -58,3 +58,6 @@ module.exports = {
     "subject-min-length": [2, "always", 3],
   },
 };
+
+//<type>(scope): [number] <short description>
+// e.g. feat(api): [123] add endpoint

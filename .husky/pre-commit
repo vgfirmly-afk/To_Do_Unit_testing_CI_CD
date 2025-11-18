@@ -1,7 +1,8 @@
-
+echo "Running pre-commit checks..."
 npm run format
 
 # # # Lint the codebase to ensure code quality
+echo "Linting the codebase..."
 npm run lint
 
 # # Install dependencies in CI mode to ensure a clean state
@@ -13,9 +14,10 @@ npm run lint
 # #   exit 1
 # # }
 
-
+echo "Running tests..."
 npm test
 
+echo "Checking for unused files/dependencies..."
 npm run knip
 
 # Run knip LAST because it is the slowest and most likely to fail

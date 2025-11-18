@@ -24,13 +24,22 @@ echo "Running tests..."
 
 #!/bin/sh
 
-
+#!/usr/bin/env bash
+# ...existing code...
 echo "Running coverage check..."
-if ! npm run coverage:check 2>&1 | tee /dev/tty; then
+OUT="$(mktemp)"
+npm run coverage:check 2>&1 | tee "$OUT"
+RC=${PIPESTATUS[0]}
+# print first occurrence of each metric (Statements/Branches/Functions/Lines)
+grep -E 'Statements|Branches|Functions|Lines' "$OUT" | awk '!seen[$1]++' | sed 's/^[[:space:]]*//'
+rm -f "$OUT"
+if [ $RC -ne 0 ]; then
   echo "❌ Coverage below required thresholds — commit blocked"
   exit 1
 fi
 echo "✅ Coverage OK"
+# ...existing code...
+
 
 
 echo "Checking for unused files/dependencies..."

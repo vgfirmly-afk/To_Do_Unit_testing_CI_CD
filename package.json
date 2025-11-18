@@ -7,7 +7,7 @@
     "check": "npm run lint && npm test",
     "test": "mocha --recursive --exit",
     "coverage": "npx c8 --reporter=html --reporter=text mocha --recursive --exit",
-    "coverage:check": "npx c8 --reporter=text --check-coverage --lines=10 --branches=10 --functions=10 --statements=10 mocha --recursive --exit",
+    "coverage:check": "npx c8 --check-coverage --lines 90 --branches 90 --functions 90 --statements 90 mocha --recursive --exit",
     "prepare": "husky",
     "lint": "eslint .",
     "format:check": "prettier --check .",

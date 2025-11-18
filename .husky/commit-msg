@@ -14,7 +14,7 @@ if ! [[ $commit_message =~ $pattern ]]; then
   echo "Please use the following format:"
   echo "type(scope?): description"
   echo ""
-  echo "Example: feat(auth): add login functionality"
+  echo "Example: feat(auth): [#123] add login functionality"
   echo ""
   echo "Allowed types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert"
   exit 1

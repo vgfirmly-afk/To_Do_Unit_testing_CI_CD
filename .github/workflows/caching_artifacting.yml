@@ -1,9 +1,11 @@
 name: caching_artifacting
 on:
   push:
+    bramches:
+      - main
   pull_request:
-    branches:
-      - "**"
+    # branches:
+      # - "**"
   # pull_request:
   #   branches:
   #     - main

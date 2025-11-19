@@ -4,12 +4,14 @@ on: [push, pull_request]
 
 jobs:
   sample:
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Sample step
         run: echo "This is a sample job."
   test:
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: self-hosted
     outputs:
       coverage-folder: coverage
 
@@ -63,7 +65,8 @@ jobs:
 
   report:
     needs: test
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout (for context if needed)

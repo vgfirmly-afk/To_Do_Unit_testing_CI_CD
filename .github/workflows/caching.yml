@@ -1,4 +1,4 @@
-name: caching_artifacting
+name: caching
 on:
   push:
     bramches:

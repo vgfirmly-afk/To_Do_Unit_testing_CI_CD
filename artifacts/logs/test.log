@@ -1,0 +1,25 @@
+
+> todo-worker@1.0.0 test
+> mocha --recursive --exit
+
+
+
+  Todos Worker routes
+    ✔ GET / should return ok true
+    ✔ GET /todos should return list of todos
+    ✔ GET /todos negative - DB rejects (expected)
+    ✔ GET /todos/:id should return a todo when found
+    ✔ GET /todos/:id negative - invalid id returns 400
+    ✔ GET /todos/:id negative - not found returns 404
+    ✔ POST /todos should create and return 201
+    ✔ POST /todos negative - invalid JSON returns 400
+    ✔ POST /todos negative - validation fail (missing title) returns 400
+    ✔ PUT /todos/:id should update and return updated todo
+    ✔ PUT /todos/:id negative - invalid id returns 400
+    ✔ PUT /todos/:id negative - validation fails when empty body returns 400
+    ✔ DELETE /todos/:id should return 204
+    ✔ DELETE /todos/:id negative - invalid id returns 400
+
+
+  14 passing (12ms)
+

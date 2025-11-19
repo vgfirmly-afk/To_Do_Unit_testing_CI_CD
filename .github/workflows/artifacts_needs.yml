@@ -34,7 +34,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24     # using Node 24 explicitly
+          node-version: 24 # using Node 24 explicitly
 
       - name: Install deps
         run: npm ci

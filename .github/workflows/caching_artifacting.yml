@@ -2,7 +2,8 @@ name: caching_artifacting
 on:
   push:
     bramches:
-      - main, features/new-branch
+      - main
+      - features/new-branch
   pull_request:
     # branches:
     # - "**"

@@ -40,10 +40,20 @@ jobs:
           resp=$(curl -s -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN_PROD }}" \
             "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/${{ env.WORKER_NAME }}/versions")
 
+          # Debug: show the response (without sensitive data)
+          echo "API Response received (checking for errors)..."
+          if echo "$resp" | jq -e '.success == false' > /dev/null 2>&1; then
+            echo "API Error: $(echo "$resp" | jq -r '.errors[0].message // "Unknown error"')"
+          fi
+
+          # Try to get the currently deployed version
           PREV=$(echo "$resp" | jq -r '.result[] | select(.deployed==true) | .id' | head -n1 || true)
 
           if [ -z "$PREV" ] || [ "$PREV" = "null" ]; then
-            echo "No active version found."
+            echo "No active deployed version found."
+            echo "Checking all versions..."
+            # Debug: show all versions
+            echo "$resp" | jq -r '.result[] | "Version: \(.id), Deployed: \(.deployed)"' || true
             echo "prev_version=" >> $GITHUB_OUTPUT
           else
             echo "Found previous version: $PREV"
@@ -71,7 +81,7 @@ jobs:
       # - name: Run tests
       #   run: |
       #     npm test
-        # this job will fail the workflow if tests fail
+      # this job will fail the workflow if tests fail
 
   deploy:
     name: Deploy with wrangler
@@ -172,22 +182,82 @@ jobs:
   rollback:
     name: Rollback to previous version (runs only when health-check reports failure)
     runs-on: ubuntu-latest
-    needs: [health-check, save-prev-version]
+    needs: [health-check, save-prev-version, deploy]
     if: needs.health-check.outputs.health_ok == 'false'
     env:
       CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
       CF_API_TOKEN_PROD: ${{ secrets.CF_API_TOKEN_PROD }}
       PREV_VERSION: ${{ needs.save-prev-version.outputs.prev_version }}
+      NEW_VERSION: ${{ needs.deploy.outputs.new_version }}
     environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Abort if no prev version saved
+      - name: Install jq (if needed)
         run: |
-          if [ -z "${PREV_VERSION}" ]; then
-            echo "No previous version available. Automatic rollback is not possible."
+          if ! command -v jq &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+
+      - name: Determine previous version for rollback
+        id: get_prev_for_rollback
+        run: |
+          set -e
+          ROLLBACK_VERSION="${PREV_VERSION}"
+          
+          # If we don't have a saved previous version, try to find it
+          if [ -z "${ROLLBACK_VERSION}" ]; then
+            echo "No previous version was saved. Attempting to find previous version..."
+            
+            if [ -z "${CF_API_TOKEN_PROD}" ] || [ -z "${CF_ACCOUNT_ID}" ]; then
+              echo "ERROR: CF secrets not available. Cannot determine previous version."
+              echo "rollback_version=" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+            
+            # Query all versions
+            echo "Querying Cloudflare API for worker versions..."
+            resp=$(curl -s -H "Authorization: Bearer ${CF_API_TOKEN_PROD}" \
+              "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/versions")
+            
+            # Check for API errors
+            if echo "$resp" | jq -e '.success == false' > /dev/null 2>&1; then
+              echo "API Error: $(echo "$resp" | jq -r '.errors[0].message // "Unknown error"')"
+              echo "rollback_version=" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+            
+            # Get the currently deployed version (should be NEW_VERSION from deploy job)
+            CURRENT="${NEW_VERSION}"
+            echo "Current deployed version from deploy job: ${CURRENT}"
+            
+            # Get all deployed versions, excluding the current one
+            if [ -n "${CURRENT}" ] && [ "${CURRENT}" != "null" ]; then
+              # Get all deployed versions except the current one
+              ROLLBACK_VERSION=$(echo "$resp" | jq -r --arg current "${CURRENT}" '.result[] | select(.deployed==true and .id != $current) | .id' | head -n1 || true)
+            else
+              # If we don't know the current version, get the most recent deployed version
+              # (which should be the one we just deployed, so we want the second one)
+              ALL_DEPLOYED=$(echo "$resp" | jq -r '.result[] | select(.deployed==true) | .id')
+              ROLLBACK_VERSION=$(echo "$ALL_DEPLOYED" | head -n2 | tail -n1 || true)
+            fi
+            
+            if [ -z "${ROLLBACK_VERSION}" ] || [ "${ROLLBACK_VERSION}" = "null" ]; then
+              echo "WARNING: Could not find a previous version to rollback to."
+              echo "Debug: Listing all versions..."
+              echo "$resp" | jq -r '.result[] | "ID: \(.id), Deployed: \(.deployed)"' || true
+            fi
+          fi
+          
+          if [ -z "${ROLLBACK_VERSION}" ] || [ "${ROLLBACK_VERSION}" = "null" ]; then
+            echo "ERROR: No previous version available. Automatic rollback is not possible."
+            echo "This might be the first deployment, or the worker has no previous versions."
+            echo "rollback_version=" >> $GITHUB_OUTPUT
             exit 1
+          else
+            echo "Will rollback to version: ${ROLLBACK_VERSION}"
+            echo "rollback_version=${ROLLBACK_VERSION}" >> $GITHUB_OUTPUT
           fi
 
       - name: Install wrangler (for rollback)
@@ -197,9 +267,14 @@ jobs:
 
       - name: Rollback using wrangler
         run: |
-          echo "Rolling back ${{ env.WORKER_NAME }} to version $PREV_VERSION"
+          ROLLBACK_VER="${{ steps.get_prev_for_rollback.outputs.rollback_version }}"
+          if [ -z "${ROLLBACK_VER}" ]; then
+            echo "ERROR: No rollback version determined. Cannot proceed."
+            exit 1
+          fi
+          echo "Rolling back ${{ env.WORKER_NAME }} to version ${ROLLBACK_VER}"
           # wrangler rollback <version-id> should create a new deployment pointing to the older version
-          npx wrangler rollback "$PREV_VERSION" --name "${{ env.WORKER_NAME }}"
+          npx wrangler rollback "${ROLLBACK_VER}" --name "${{ env.WORKER_NAME }}"
 
       - name: Confirm rollback
         run: |

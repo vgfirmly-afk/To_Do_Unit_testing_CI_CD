@@ -2,7 +2,7 @@ name: Roll Back Cloudflare Worker on Failed Health Check
 
 on:
   push:
-    branches: [ features/CD ]
+    branches: [features/CD]
 
 # minimal repo permissions; adjust if you need to write artifacts etc.
 permissions:
@@ -36,7 +36,7 @@ jobs:
             exit 0
           fi
 
-          echo "Querying Cloudflare for the currently deployed version of $WORKER_NAME..."
+          echo "Querying Cloudflare for the currently deployed version of ${{ env.WORKER_NAME }}..."
           resp=$(curl -s -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN_PROD }}" \
             "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/${{ env.WORKER_NAME }}/versions")
 
@@ -83,7 +83,6 @@ jobs:
     env:
       CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
       CF_API_TOKEN_PROD: ${{ secrets.CF_API_TOKEN_PROD }}
-      WORKER_NAME: ${{ WORKER_NAME }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -102,13 +101,13 @@ jobs:
             exit 1
           fi
 
-          echo "Deploying $WORKER_NAME..."
+          echo "Deploying ${{ env.WORKER_NAME }}..."
           # adjust flags (e.g. --env production) as needed
-          npx wrangler deploy --account-id "$CF_ACCOUNT_ID" --name "$WORKER_NAME"
+          npx wrangler deploy --account-id "$CF_ACCOUNT_ID" --name "${{ env.WORKER_NAME }}"
 
           # After deploy, query latest deployed version id
           resp=$(curl -s -H "Authorization: Bearer $CF_API_TOKEN_PROD" \
-            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/versions")
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/versions")
           NEW=$(echo "$resp" | jq -r '.result[] | select(.deployed==true) | .id' | head -n1 || true)
           if [ -z "$NEW" ] || [ "$NEW" = "null" ]; then
             echo "new_version=" >> $GITHUB_OUTPUT
@@ -128,9 +127,9 @@ jobs:
       health_ok: ${{ steps.set_out.outputs.health_ok }}
     environment: production
     env:
-      HEALTH_URL: ${{ secrets.HEALTH_URL }}
-      RETRIES: ${{ RETRIES }}
-      RETRY_DELAY_SEC: ${{ RETRY_DELAY_SEC }}
+      HEALTH_URL: ${{ env.HEALTH_URL }}
+      RETRIES: ${{ env.RETRIES }}
+      RETRY_DELAY_SEC: ${{ env.RETRY_DELAY_SEC }}
     steps:
       - name: Simple health probe with retries
         id: probe
@@ -168,26 +167,16 @@ jobs:
       - name: Set job output
         id: set_out
         run: |
-          # relay the probe result as a stable output
-          # if step 'probe' wrote health_ok to $GITHUB_OUTPUT it's already available as step output; but to be safe, compute and echo
-          # read from the file-based step output (probe didn't write into steps.probe.outputs, so let's parse /tmp/health_resp.txt as needed)
-          # We'll read the previous step's job output via environment
-          if [ -f /tmp/health_resp.txt ]; then
-            # no-op; retain probe behavior
-            :
-          fi
-          # default to false if not set
-          if [ "${{ steps.probe.outcome }}" = "success" ] && [ -n "${{ steps.probe.outputs.health_ok }}" ]; then
-            echo "health_ok=${{ steps.probe.outputs.health_ok }}" >> $GITHUB_OUTPUT
+          if [ "${{ steps.probe.outputs.health_ok }}" = "true" ]; then
+            echo "health_ok=true" >> $GITHUB_OUTPUT
           else
-            # The probe step already appended health_ok to $GITHUB_OUTPUT, GitHub will capture it. As fallback:
             echo "health_ok=false" >> $GITHUB_OUTPUT
           fi
 
   rollback:
     name: Rollback to previous version (runs only when health-check reports failure)
     runs-on: ubuntu-latest
-    needs: health-check
+    needs: [health-check, save-prev-version]
     if: needs.health-check.outputs.health_ok == 'false'
     env:
       CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}

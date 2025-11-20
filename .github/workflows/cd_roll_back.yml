@@ -27,7 +27,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "24"
 
       - name: Install dependencies
         run: |
@@ -43,42 +43,78 @@ jobs:
     runs-on: ubuntu-latest
     needs: run-tests
     environment: production
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_PROD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN_PROD }}
-          accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          command: deploy --name ${{ env.WORKER_NAME }}
+      - name: Install wrangler
+        run: |
+          npm ci
+          npm i -D wrangler@latest
+
+      - name: Deploy
+        run: |
+          set -e
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "CF secrets not present — aborting deploy."
+            exit 1
+          fi
+
+          echo "Deploying ${{ env.WORKER_NAME }}..."
+          npx wrangler deploy --name "${{ env.WORKER_NAME }}"
 
   health-check:
-    name: Health check
+    name: Health check (non-failing; reports pass/fail)
     runs-on: ubuntu-latest
     needs: deploy
     outputs:
-      health_ok: ${{ steps.set_health.outputs.health_ok }}
+      health_ok: ${{ steps.set_out.outputs.health_ok }}
     environment: production
     steps:
-      - name: Check health endpoint
-        id: health
-        uses: jtalk/url-health-check-action@v3
-        continue-on-error: true
-        with:
-          url: ${{ env.HEALTH_URL }}
-          max-attempts: ${{ env.RETRIES }}
-          retry-delay: ${{ env.RETRY_DELAY_SEC }}
-          follow-redirect: true
+      - name: Simple health probe with retries
+        id: probe
+        run: |
+          set -e
+          # If no health URL configured, mark as failed (you can change this policy)
+          if [ -z "${{ env.HEALTH_URL }}" ]; then
+            echo "No HEALTH_URL provided; marking health as failed."
+            echo "health_ok=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
-      - name: Set health status
-        id: set_health
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const healthOk = '${{ steps.health.outcome }}' === 'success';
-            core.setOutput('health_ok', healthOk.toString());
+          ok=false
+          for i in $(seq 1 ${{ env.RETRIES }}); do
+            echo "Health attempt $i..."
+            # store body and http code
+            http_code=$(curl -s -w "%{http_code}" -o /tmp/health_resp.txt "${{ env.HEALTH_URL }}" || true)
+            body=$(cat /tmp/health_resp.txt || true)
+            echo "status=$http_code"
+            echo "body=$body"
+            # Change condition to match your expected shape. Here we accept 200 and body contains "ok"
+            if [ "$http_code" = "200" ] && echo "$body" | grep -qi "ok"; then
+              ok=true
+              break
+            fi
+            sleep ${{ env.RETRY_DELAY_SEC }}
+          done
+
+          if [ "$ok" = "true" ]; then
+            echo "health_ok=true" >> $GITHUB_OUTPUT
+          else
+            echo "health_ok=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set job output
+        id: set_out
+        run: |
+          if [ "${{ steps.probe.outputs.health_ok }}" = "true" ]; then
+            echo "health_ok=true" >> $GITHUB_OUTPUT
+          else
+            echo "health_ok=false" >> $GITHUB_OUTPUT
+          fi
 
   rollback:
     name: Rollback to previous version (runs only when health-check reports failure)
@@ -86,13 +122,26 @@ jobs:
     needs: [health-check, deploy]
     if: needs.health-check.outputs.health_ok == 'false'
     environment: production
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_PROD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Rollback Cloudflare Worker
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN_PROD }}
-          accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          command: rollback --name ${{ env.WORKER_NAME }}
+      - name: Install wrangler
+        run: |
+          npm ci
+          npm i -D wrangler@latest
+
+      - name: Rollback using wrangler
+        run: |
+          set -e
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "CF secrets not present — aborting rollback."
+            exit 1
+          fi
+
+          echo "Rolling back ${{ env.WORKER_NAME }} to previous version..."
+          # wrangler rollback automatically finds and rolls back to the previous version
+          npx wrangler rollback --name "${{ env.WORKER_NAME }}"

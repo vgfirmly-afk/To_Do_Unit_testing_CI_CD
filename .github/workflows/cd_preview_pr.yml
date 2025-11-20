@@ -85,11 +85,11 @@ jobs:
       - name: Delete preview workers for this PR (all matching prefix)
         env:
           CF_API_TOKEN_PROD: ${{ secrets.CF_API_TOKEN_PROD }}
-          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           PREFIX: ${{ env.PREVIEW_PREFIX }}-${{ github.event.number }}-
         run: |
           if [ -z "$ACCOUNT_ID" ]; then
-            echo "Missing CLOUDFLARE_ACCOUNT_ID secret — skipping delete."
+            echo "Missing CF_ACCOUNT_ID secret — skipping delete."
             exit 0
           fi
 

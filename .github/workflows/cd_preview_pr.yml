@@ -35,7 +35,9 @@ jobs:
             ${{ runner.os }}-node-
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci
+          npm install -g wrangler@4.49.0
 
       # - name: Build (uncomment / change if you have a build step)
       #   run: npm run build

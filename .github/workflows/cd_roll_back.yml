@@ -2,14 +2,12 @@ name: Roll Back Cloudflare Worker on Failed Health Check
 
 on:
   push:
-    branches: [features/CD]
+    branches: 
+      - features/CD
 
-# minimal repo permissions; adjust if you need to write artifacts etc.
-# permissions:
-#   contents: read
+
 
 env:
-  # set defaults here; override via job env or repository secrets if needed
   WORKER_NAME: todo-worker
   RETRIES: 6
   RETRY_DELAY_SEC: 5

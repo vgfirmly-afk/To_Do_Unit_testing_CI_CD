@@ -161,7 +161,7 @@ jobs:
           ACTOR="${{ github.actor }}"
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           COMMIT_URL="https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
-          
+
           PAYLOAD=$(jq -n \
             --arg text "Deployment Status: ${WORKER_NAME}" \
             --arg worker_name "${WORKER_NAME}" \
@@ -240,7 +240,7 @@ jobs:
                 }
               ]
             }')
-          
+
           curl -X POST -H 'Content-type: application/json' \
             --data "${PAYLOAD}" \
             ${{ secrets.SLACK_WEBHOOK_URL }}

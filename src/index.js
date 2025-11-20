@@ -30,7 +30,7 @@ function jsonResponse(data, status = 200) {
 // -----------------------------
 
 // Health check
-router.get("/kk", () => jsonResponse({ ok: true }));
+router.get("/", () => jsonResponse({ ok: true }));
 
 // List todos
 router.get("/todos", async ({ env }) => {

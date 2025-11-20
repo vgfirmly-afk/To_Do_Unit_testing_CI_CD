@@ -4,7 +4,7 @@ main = "src/index.js"
 type="javascript"
 workers_dev = false
 
-[env.staging]
+#[env.staging]
 # override values for staging
 # e.g. d1 binding for staging if different
 # [[d1_databases]]
@@ -21,9 +21,9 @@ workers_dev = false
 
 # nothing here — bind your D1 database and other bindings in your wrangler dev/publish config
 
-[env.production]
-name = "my_todo"        # worker name for production
-route = ""               # optional: route to attach (e.g. example.com/*)
+#[env.production]
+#name = "my_todo"        # worker name for production
+#route = ""               # optional: route to attach (e.g. example.com/*)
 
 #[env.dev]
 [[d1_databases]]

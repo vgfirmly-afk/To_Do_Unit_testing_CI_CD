@@ -3,7 +3,6 @@ name: Roll Back Cloudflare Worker on Failed Health Check
 on:
   push:
     branches:
-      
 
 env:
   WORKER_NAME: todo-worker
@@ -28,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           npm ci
-
+ 
       # - name: Run tests
       #   run: |
       #     npm test

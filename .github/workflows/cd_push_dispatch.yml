@@ -11,14 +11,14 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read      # checkout
-  id-token: write     # only required if you use OIDC; otherwise safe to leave
+  contents: read # checkout
+  id-token: write # only required if you use OIDC; otherwise safe to leave
   # no need to allow secrets explicitly here; environment secrets are injected after approval
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment: production        # important: requires environment approval before secrets are available
+    environment: production # important: requires environment approval before secrets are available
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install dependencies
         run: |
@@ -40,7 +40,7 @@ jobs:
         id: publish
         uses: cloudflare/wrangler-action@v1
         with:
-          apiToken: ${{ secrets.CF_API_TOKEN_PROD }}   # injected from the production environment
+          apiToken: ${{ secrets.CF_API_TOKEN_PROD }} # injected from the production environment
           command: deploy
           # if you want a specific environment flag in wrangler:
           # args: --env production

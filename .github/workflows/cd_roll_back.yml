@@ -103,7 +103,7 @@ jobs:
 
           echo "Deploying ${{ env.WORKER_NAME }}..."
           # adjust flags (e.g. --env production) as needed
-          npx wrangler deploy --account-id "$CF_ACCOUNT_ID" --name "${{ env.WORKER_NAME }}"
+          npx wrangler deploy --name "${{ env.WORKER_NAME }}"
 
           # After deploy, query latest deployed version id
           resp=$(curl -s -H "Authorization: Bearer $CF_API_TOKEN_PROD" \
@@ -199,7 +199,7 @@ jobs:
         run: |
           echo "Rolling back ${{ env.WORKER_NAME }} to version $PREV_VERSION"
           # wrangler rollback <version-id> should create a new deployment pointing to the older version
-          npx wrangler rollback "$PREV_VERSION" --account-id "$CF_ACCOUNT_ID" --name "${{ env.WORKER_NAME }}"
+          npx wrangler rollback "$PREV_VERSION" --name "${{ env.WORKER_NAME }}"
 
       - name: Confirm rollback
         run: |

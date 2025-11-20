@@ -60,9 +60,9 @@ jobs:
 
           # Check the structure - Cloudflare API returns .result.items[] for versions
           HAS_ITEMS=$(echo "$resp" | jq -e '.result.items != null' 2>/dev/null && echo "yes" || echo "no")
-          
+
           PREV=""
-          
+
           if [ "$HAS_ITEMS" = "yes" ]; then
             # Structure is .result.items[] - need to find which version is deployed
             # First, try to get the current deployment from the deployments endpoint
@@ -170,11 +170,11 @@ jobs:
           # After deploy, query latest deployed version id
           resp=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/versions")
-          
+
           # Check for .result.items[] structure
           HAS_ITEMS=$(echo "$resp" | jq -e '.result.items != null' 2>/dev/null && echo "yes" || echo "no")
           NEW=""
-          
+
           if [ "$HAS_ITEMS" = "yes" ]; then
             # Get the most recent deployment from deployments endpoint
             deploy_resp=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
@@ -195,7 +195,7 @@ jobs:
               NEW=$(echo "$resp" | jq -r '.result.id // empty' 2>/dev/null || true)
             fi
           fi
-          
+
           if [ -z "$NEW" ] || [ "$NEW" = "null" ]; then
             echo "Could not determine new version from API response"
             echo "new_version=" >> $GITHUB_OUTPUT
@@ -385,14 +385,14 @@ jobs:
           # optional: query versions to ensure a deployed version exists
           resp=$(curl -s -H "Authorization: Bearer $CF_API_TOKEN_PROD" \
             "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/versions")
-          
+
           # Check deployments endpoint for currently deployed version
           deploy_resp=$(curl -s -H "Authorization: Bearer $CF_API_TOKEN_PROD" \
             "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/deployments" || echo "{}")
-          
+
           HAS_ITEMS=$(echo "$resp" | jq -e '.result.items != null' 2>/dev/null && echo "yes" || echo "no")
           deployed=""
-          
+
           if [ "$HAS_ITEMS" = "yes" ]; then
             # Try deployments endpoint first
             deployed=$(echo "$deploy_resp" | jq -r '.result[] | select(.source == "upload") | .version_id' 2>/dev/null | head -n1 || true)
@@ -409,5 +409,5 @@ jobs:
               deployed=$(echo "$resp" | jq -r '.result.id // empty' 2>/dev/null || true)
             fi
           fi
-          
+
           echo "Now deployed version: ${deployed:-unknown}"

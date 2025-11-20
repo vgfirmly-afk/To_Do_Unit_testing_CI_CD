@@ -37,8 +37,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build (uncomment / change if you have a build step)
-        run: npm run build
+      # - name: Build (uncomment / change if you have a build step)
+      #   run: npm run build
         # if your project doesn't need build step, you can remove or comment this step
 
       - name: Create short SHA

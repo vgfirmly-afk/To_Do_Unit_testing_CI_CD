@@ -126,27 +126,23 @@ jobs:
     outputs:
       health_ok: ${{ steps.set_out.outputs.health_ok }}
     environment: production
-    env:
-      HEALTH_URL: ${{ env.HEALTH_URL }}
-      RETRIES: ${{ env.RETRIES }}
-      RETRY_DELAY_SEC: ${{ env.RETRY_DELAY_SEC }}
     steps:
       - name: Simple health probe with retries
         id: probe
         run: |
           set -e
           # If no health URL configured, mark as failed (you can change this policy)
-          if [ -z "$HEALTH_URL" ]; then
+          if [ -z "${{ env.HEALTH_URL }}" ]; then
             echo "No HEALTH_URL provided; marking health as failed."
             echo "health_ok=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
           ok=false
-          for i in $(seq 1 $RETRIES); do
+          for i in $(seq 1 ${{ env.RETRIES }}); do
             echo "Health attempt $i..."
             # store body and http code
-            http_code=$(curl -s -w "%{http_code}" -o /tmp/health_resp.txt "$HEALTH_URL" || true)
+            http_code=$(curl -s -w "%{http_code}" -o /tmp/health_resp.txt "${{ env.HEALTH_URL }}" || true)
             body=$(cat /tmp/health_resp.txt || true)
             echo "status=$http_code"
             echo "body=$body"
@@ -155,7 +151,7 @@ jobs:
               ok=true
               break
             fi
-            sleep $RETRY_DELAY_SEC
+            sleep ${{ env.RETRY_DELAY_SEC }}
           done
 
           if [ "$ok" = "true" ]; then
@@ -181,7 +177,6 @@ jobs:
     env:
       CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
       CF_API_TOKEN_PROD: ${{ secrets.CF_API_TOKEN_PROD }}
-      WORKER_NAME: ${{ env.WORKER_NAME }}
       PREV_VERSION: ${{ needs.save-prev-version.outputs.prev_version }}
     environment: production
     steps:
@@ -202,14 +197,14 @@ jobs:
 
       - name: Rollback using wrangler
         run: |
-          echo "Rolling back $WORKER_NAME to version $PREV_VERSION"
+          echo "Rolling back ${{ env.WORKER_NAME }} to version $PREV_VERSION"
           # wrangler rollback <version-id> should create a new deployment pointing to the older version
-          npx wrangler rollback "$PREV_VERSION" --account-id "$CF_ACCOUNT_ID" --name "$WORKER_NAME"
+          npx wrangler rollback "$PREV_VERSION" --account-id "$CF_ACCOUNT_ID" --name "${{ env.WORKER_NAME }}"
 
       - name: Confirm rollback
         run: |
           # optional: query versions to ensure a deployed version exists
           resp=$(curl -s -H "Authorization: Bearer $CF_API_TOKEN_PROD" \
-            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/versions")
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/versions")
           deployed=$(echo "$resp" | jq -r '.result[] | select(.deployed==true) | .id' | head -n1 || true)
           echo "Now deployed version: $deployed"

@@ -4,31 +4,42 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 env:
-  # pattern for preview worker; short sha appended for uniqueness
   PREVIEW_PREFIX: pr
 
 jobs:
   preview:
-    # run for non-closed PR events
     if: ${{ github.event.action != 'closed' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Set up Node.js (compatible with Wrangler v4)
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: "20"
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
       - name: Install dependencies
         run: npm ci
 
-      # - name: Build
-      #   run: npm run build
+      - name: Build (uncomment / change if you have a build step)
+        run: npm run build
+        # if your project doesn't need build step, you can remove or comment this step
 
       - name: Create short SHA
         run: echo "SHORT_SHA=$(echo ${GITHUB_SHA} | cut -c1-7)" >> $GITHUB_ENV
@@ -36,11 +47,10 @@ jobs:
       - name: Set preview name (PR number + short sha)
         run: echo "PREVIEW_NAME=${{ env.PREVIEW_PREFIX }}-${{ github.event.number }}-${SHORT_SHA}" >> $GITHUB_ENV
 
-      - name: Deploy preview with Wrangler (deploy is the recommended command)
+      - name: Deploy preview with Wrangler (deploy is recommended)
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CF_API_TOKEN_PROD }}
-          # deploy (not deprecated publish). we set the worker name to the preview name.
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           command: deploy --name ${{ env.PREVIEW_NAME }}
 
       # - name: Comment preview URL on PR (create or update)
@@ -53,34 +63,62 @@ jobs:
 
       #       **Preview URL:** `https://${{ env.PREVIEW_NAME }}.workers.dev`
 
-      #       _Preview name:_ `{{ env.PREVIEW_NAME }}`
+      #       _Preview name:_ `${{ env.PREVIEW_NAME }}`
 
   cleanup:
-    # only run when PR is closed
     if: ${{ github.event.action == 'closed' }}
     runs-on: ubuntu-latest
-    needs: []
     steps:
-      - name: Determine preview name
-        # recreate the exact preview name used above
-        run: |
-          SHORT_SHA=$(echo ${GITHUB_SHA} | cut -c1-7)
-          echo "PREVIEW_NAME=${{ env.PREVIEW_PREFIX }}-${{ github.event.number }}-${SHORT_SHA}" >> $GITHUB_ENV
+      - name: Set up Node (for jq install on some runners)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-      - name: Attempt to delete preview worker (Cloudflare API)
+      - name: Install jq (for JSON parsing)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+
+      - name: Delete preview workers for this PR (all matching prefix)
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_PROD }}
-          ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREFIX: ${{ env.PREVIEW_PREFIX }}-${{ github.event.number }}-
         run: |
           if [ -z "$ACCOUNT_ID" ]; then
             echo "Missing CLOUDFLARE_ACCOUNT_ID secret — skipping delete."
             exit 0
           fi
 
-          # delete the worker script for the preview name
-          echo "Deleting preview worker: $PREVIEW_NAME"
-          curl --silent --show-error --fail -X DELETE \
-            "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/workers/scripts/$PREVIEW_NAME" \
+          echo "Listing scripts for account $ACCOUNT_ID ..."
+          # List scripts and delete ones that start with the PR prefix.
+          # The list endpoint returns result[] objects; we'll extract their 'id' or 'name' field (fallback).
+          SCRIPTS_JSON=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/workers/scripts" \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            || echo "Delete call failed or script not found (that's OK)."
+            -H "Content-Type: application/json")
+
+          if [ -z "$SCRIPTS_JSON" ]; then
+            echo "Failed to list scripts or no scripts returned — exiting."
+            exit 0
+          fi
+
+          # Try to extract script identifiers. Try .result[].id then .result[].name as fallback.
+          SCRIPT_IDS=$(echo "$SCRIPTS_JSON" | jq -r '.result[] | (.id // .name // "")' | tr '\n' ' ')
+          if [ -z "$SCRIPT_IDS" ]; then
+            echo "No scripts found in account — nothing to delete."
+            exit 0
+          fi
+
+          echo "Checking scripts for prefix: $PREFIX"
+          for id in $SCRIPT_IDS; do
+            if [[ "$id" == $PREFIX* ]]; then
+              echo "Deleting script: $id"
+              curl --silent --show-error --fail -X DELETE \
+                "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/workers/scripts/$id" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                || echo "Delete failed for $id (it may not exist)."
+            fi
+          done
+
+          echo "Cleanup complete."

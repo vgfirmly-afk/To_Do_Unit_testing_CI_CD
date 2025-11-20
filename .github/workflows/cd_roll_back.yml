@@ -16,100 +16,9 @@ env:
   HEALTH_URL: "https://todo-worker.vg-firmly.workers.dev/"
 
 jobs:
-  save-prev-version:
-    name: Save currently active Worker version
-    runs-on: ubuntu-latest
-    outputs:
-      prev_version: ${{ steps.get_prev.outputs.prev_version }}
-    environment: production
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install jq (if needed)
-        run: |
-          if ! command -v jq &> /dev/null; then
-            sudo apt-get update && sudo apt-get install -y jq
-          fi
-
-      - name: Fetch previous active version id
-        id: get_prev
-        run: |
-          set -e
-          if [ -z "${{ secrets.CF_API_TOKEN_PROD }}" ] || [ -z "${{ secrets.CF_ACCOUNT_ID }}" ]; then
-            echo "CF secrets not set; continuing without prev version."
-            echo "prev_version=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          echo "Querying Cloudflare for the currently deployed version of ${{ env.WORKER_NAME }}..."
-          resp=$(curl -s -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN_PROD }}" \
-            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/${{ env.WORKER_NAME }}/versions")
-
-          # Debug: show response structure (safely)
-          echo "API Response structure check..."
-          echo "$resp" | jq 'keys' 2>/dev/null || echo "Response is not valid JSON or jq failed"
-          echo "$resp" | jq '.result | type' 2>/dev/null || echo "Could not determine result type"
-
-          # Check for API errors
-          if echo "$resp" | jq -e '.success == false' > /dev/null 2>&1; then
-            echo "API Error: $(echo "$resp" | jq -r '.errors[0].message // "Unknown error"')"
-            echo "prev_version=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # Check the structure - Cloudflare API returns .result.items[] for versions
-          HAS_ITEMS=$(echo "$resp" | jq -e '.result.items != null' 2>/dev/null && echo "yes" || echo "no")
-
-          PREV=""
-
-          if [ "$HAS_ITEMS" = "yes" ]; then
-            # Structure is .result.items[] - need to find which version is deployed
-            # First, try to get the current deployment from the deployments endpoint
-            echo "Checking deployments endpoint for currently deployed version..."
-            deploy_resp=$(curl -s -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN_PROD }}" \
-              "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/${{ env.WORKER_NAME }}/deployments" || echo "{}")
-            
-            DEPLOYED_VERSION_ID=$(echo "$deploy_resp" | jq -r '.result[] | select(.source == "upload") | .version_id' 2>/dev/null | head -n1 || true)
-            
-            if [ -n "$DEPLOYED_VERSION_ID" ] && [ "$DEPLOYED_VERSION_ID" != "null" ]; then
-              echo "Found deployed version from deployments endpoint: $DEPLOYED_VERSION_ID"
-              # Get the version before this one (by version number)
-              CURRENT_NUM=$(echo "$resp" | jq -r --arg vid "$DEPLOYED_VERSION_ID" '.result.items[] | select(.id == $vid) | .number' 2>/dev/null || true)
-              if [ -n "$CURRENT_NUM" ] && [ "$CURRENT_NUM" != "null" ]; then
-                PREV_NUM=$((CURRENT_NUM - 1))
-                PREV=$(echo "$resp" | jq -r --argjson num "$PREV_NUM" '.result.items[] | select(.number == $num) | .id' 2>/dev/null || true)
-              fi
-            fi
-            
-            # Fallback: if we can't find from deployments, use version numbers (highest = current, second highest = previous)
-            if [ -z "$PREV" ] || [ "$PREV" = "null" ]; then
-              echo "Using version numbers as fallback..."
-              # Get versions sorted by number (descending), skip first (current), get second (previous)
-              PREV=$(echo "$resp" | jq -r '.result.items | sort_by(.number) | reverse | .[1].id // empty' 2>/dev/null || true)
-            fi
-          else
-            # Try legacy structure
-            RESULT_TYPE=$(echo "$resp" | jq -r 'if .result | type == "array" then "array" else "object" end' 2>/dev/null || echo "unknown")
-            if [ "$RESULT_TYPE" = "array" ]; then
-              PREV=$(echo "$resp" | jq -r '.result[0]?.id // empty' 2>/dev/null || true)
-            elif [ "$RESULT_TYPE" = "object" ]; then
-              PREV=$(echo "$resp" | jq -r '.result.id // empty' 2>/dev/null || true)
-            fi
-          fi
-
-          if [ -z "$PREV" ] || [ "$PREV" = "null" ]; then
-            echo "No previous version found."
-            echo "prev_version=" >> $GITHUB_OUTPUT
-          else
-            echo "Found previous version: $PREV"
-            echo "prev_version=$PREV" >> $GITHUB_OUTPUT
-          fi
-
   run-tests:
     name: Run tests
     runs-on: ubuntu-latest
-    needs: save-prev-version
     environment: production
     steps:
       - name: Checkout
@@ -132,282 +41,58 @@ jobs:
   deploy:
     name: Deploy with wrangler
     runs-on: ubuntu-latest
-    needs: [save-prev-version, run-tests]
-    outputs:
-      new_version: ${{ steps.get_new_ver.outputs.new_version }}
+    needs: run-tests
     environment: production
-    env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_PROD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install wrangler
-        run: |
-          npm ci
-          npm i -D wrangler@latest
-
-      - name: Install jq (if needed)
-        run: |
-          if ! command -v jq &> /dev/null; then
-            sudo apt-get update && sudo apt-get install -y jq
-          fi
-
-      - name: Deploy
-        id: deploy_step
-        run: |
-          set -e
-          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "CF secrets not present — aborting deploy."
-            exit 1
-          fi
-
-          echo "Deploying ${{ env.WORKER_NAME }}..."
-          # adjust flags (e.g. --env production) as needed
-          npx wrangler deploy --name "${{ env.WORKER_NAME }}"
-
-          # After deploy, query latest deployed version id
-          resp=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/versions")
-
-          # Check for .result.items[] structure
-          HAS_ITEMS=$(echo "$resp" | jq -e '.result.items != null' 2>/dev/null && echo "yes" || echo "no")
-          NEW=""
-
-          if [ "$HAS_ITEMS" = "yes" ]; then
-            # Get the most recent deployment from deployments endpoint
-            deploy_resp=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/deployments" || echo "{}")
-            
-            NEW=$(echo "$deploy_resp" | jq -r '.result[] | select(.source == "upload") | .version_id' 2>/dev/null | head -n1 || true)
-            
-            # Fallback: get highest version number
-            if [ -z "$NEW" ] || [ "$NEW" = "null" ]; then
-              NEW=$(echo "$resp" | jq -r '.result.items | sort_by(.number) | reverse | .[0].id // empty' 2>/dev/null || true)
-            fi
-          else
-            # Try legacy structure
-            RESULT_TYPE=$(echo "$resp" | jq -r 'if .result | type == "array" then "array" else "object" end' 2>/dev/null || echo "unknown")
-            if [ "$RESULT_TYPE" = "array" ]; then
-              NEW=$(echo "$resp" | jq -r '.result[0]?.id // empty' 2>/dev/null || true)
-            elif [ "$RESULT_TYPE" = "object" ]; then
-              NEW=$(echo "$resp" | jq -r '.result.id // empty' 2>/dev/null || true)
-            fi
-          fi
-
-          if [ -z "$NEW" ] || [ "$NEW" = "null" ]; then
-            echo "Could not determine new version from API response"
-            echo "new_version=" >> $GITHUB_OUTPUT
-          else
-            echo "New deployed version: $NEW"
-            echo "new_version=$NEW" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Expose new_version output
-        id: get_new_ver
-        run: echo "new_version=${{ steps.deploy_step.outputs.new_version }}" >> $GITHUB_OUTPUT
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN_PROD }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: deploy --name ${{ env.WORKER_NAME }}
 
   health-check:
-    name: Health check (non-failing; reports pass/fail)
+    name: Health check
     runs-on: ubuntu-latest
     needs: deploy
     outputs:
-      health_ok: ${{ steps.set_out.outputs.health_ok }}
+      health_ok: ${{ steps.set_health.outputs.health_ok }}
     environment: production
     steps:
-      - name: Simple health probe with retries
-        id: probe
-        run: |
-          set -e
-          # If no health URL configured, mark as failed (you can change this policy)
-          if [ -z "${{ env.HEALTH_URL }}" ]; then
-            echo "No HEALTH_URL provided; marking health as failed."
-            echo "health_ok=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
+      - name: Check health endpoint
+        id: health
+        uses: jtalk/url-health-check-action@v3
+        continue-on-error: true
+        with:
+          url: ${{ env.HEALTH_URL }}
+          max-attempts: ${{ env.RETRIES }}
+          retry-delay: ${{ env.RETRY_DELAY_SEC }}
+          follow-redirect: true
 
-          ok=false
-          for i in $(seq 1 ${{ env.RETRIES }}); do
-            echo "Health attempt $i..."
-            # store body and http code
-            http_code=$(curl -s -w "%{http_code}" -o /tmp/health_resp.txt "${{ env.HEALTH_URL }}" || true)
-            body=$(cat /tmp/health_resp.txt || true)
-            echo "status=$http_code"
-            echo "body=$body"
-            # Change condition to match your expected shape. Here we accept 200 and body contains "ok"
-            if [ "$http_code" = "200" ] && echo "$body" | grep -qi "ok"; then
-              ok=true
-              break
-            fi
-            sleep ${{ env.RETRY_DELAY_SEC }}
-          done
-
-          if [ "$ok" = "true" ]; then
-            echo "health_ok=true" >> $GITHUB_OUTPUT
-          else
-            echo "health_ok=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Set job output
-        id: set_out
-        run: |
-          if [ "${{ steps.probe.outputs.health_ok }}" = "true" ]; then
-            echo "health_ok=true" >> $GITHUB_OUTPUT
-          else
-            echo "health_ok=false" >> $GITHUB_OUTPUT
-          fi
+      - name: Set health status
+        id: set_health
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const healthOk = '${{ steps.health.outcome }}' === 'success';
+            core.setOutput('health_ok', healthOk.toString());
 
   rollback:
     name: Rollback to previous version (runs only when health-check reports failure)
     runs-on: ubuntu-latest
-    needs: [health-check, save-prev-version, deploy]
+    needs: [health-check, deploy]
     if: needs.health-check.outputs.health_ok == 'false'
-    env:
-      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-      CF_API_TOKEN_PROD: ${{ secrets.CF_API_TOKEN_PROD }}
-      PREV_VERSION: ${{ needs.save-prev-version.outputs.prev_version }}
-      NEW_VERSION: ${{ needs.deploy.outputs.new_version }}
     environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install jq (if needed)
-        run: |
-          if ! command -v jq &> /dev/null; then
-            sudo apt-get update && sudo apt-get install -y jq
-          fi
-
-      - name: Determine previous version for rollback
-        id: get_prev_for_rollback
-        run: |
-          set -e
-          ROLLBACK_VERSION="${PREV_VERSION}"
-
-          # If we don't have a saved previous version, try to find it
-          if [ -z "${ROLLBACK_VERSION}" ]; then
-            echo "No previous version was saved. Attempting to find previous version..."
-            
-            if [ -z "${CF_API_TOKEN_PROD}" ] || [ -z "${CF_ACCOUNT_ID}" ]; then
-              echo "ERROR: CF secrets not available. Cannot determine previous version."
-              echo "rollback_version=" >> $GITHUB_OUTPUT
-              exit 1
-            fi
-            
-            # Query all versions
-            echo "Querying Cloudflare API for worker versions..."
-            resp=$(curl -s -H "Authorization: Bearer ${CF_API_TOKEN_PROD}" \
-              "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/versions")
-            
-            # Check for API errors
-            if echo "$resp" | jq -e '.success == false' > /dev/null 2>&1; then
-              echo "API Error: $(echo "$resp" | jq -r '.errors[0].message // "Unknown error"')"
-              echo "rollback_version=" >> $GITHUB_OUTPUT
-              exit 1
-            fi
-            
-            # Check for .result.items[] structure
-            HAS_ITEMS=$(echo "$resp" | jq -e '.result.items != null' 2>/dev/null && echo "yes" || echo "no")
-            echo "API response has items array: $HAS_ITEMS"
-            
-            # Get the currently deployed version (should be NEW_VERSION from deploy job)
-            CURRENT="${NEW_VERSION}"
-            echo "Current deployed version from deploy job: ${CURRENT}"
-            
-            if [ "$HAS_ITEMS" = "yes" ]; then
-              # Structure is .result.items[] - use version numbers
-              if [ -n "${CURRENT}" ] && [ "${CURRENT}" != "null" ]; then
-                # Get the version number of the current deployment
-                CURRENT_NUM=$(echo "$resp" | jq -r --arg vid "${CURRENT}" '.result.items[] | select(.id == $vid) | .number' 2>/dev/null || true)
-                if [ -n "$CURRENT_NUM" ] && [ "$CURRENT_NUM" != "null" ] && [ "$CURRENT_NUM" -gt 1 ]; then
-                  # Get the version with number one less than current
-                  PREV_NUM=$((CURRENT_NUM - 1))
-                  ROLLBACK_VERSION=$(echo "$resp" | jq -r --argjson num "$PREV_NUM" '.result.items[] | select(.number == $num) | .id' 2>/dev/null || true)
-                fi
-              fi
-              
-              # Fallback: get second highest version number
-              if [ -z "${ROLLBACK_VERSION}" ] || [ "${ROLLBACK_VERSION}" = "null" ]; then
-                echo "Using version numbers: getting second highest version..."
-                ROLLBACK_VERSION=$(echo "$resp" | jq -r '.result.items | sort_by(.number) | reverse | .[1].id // empty' 2>/dev/null || true)
-              fi
-            else
-              # Try legacy structure
-              RESULT_TYPE=$(echo "$resp" | jq -r 'if .result | type == "array" then "array" else "object" end' 2>/dev/null || echo "unknown")
-              if [ "$RESULT_TYPE" = "array" ]; then
-                if [ -n "${CURRENT}" ] && [ "${CURRENT}" != "null" ]; then
-                  ALL_IDS=$(echo "$resp" | jq -r '.result[]? | select(.id != null) | .id' 2>/dev/null)
-                  ROLLBACK_VERSION=$(echo "$ALL_IDS" | grep -v "^${CURRENT}$" | head -n1 || true)
-                else
-                  ROLLBACK_VERSION=$(echo "$resp" | jq -r '.result[1]?.id // empty' 2>/dev/null || true)
-                fi
-              elif [ "$RESULT_TYPE" = "object" ]; then
-                ROLLBACK_VERSION=$(echo "$resp" | jq -r '.result.id // empty' 2>/dev/null || true)
-              fi
-            fi
-            
-            if [ -z "${ROLLBACK_VERSION}" ] || [ "${ROLLBACK_VERSION}" = "null" ]; then
-              echo "WARNING: Could not find a previous version to rollback to."
-              echo "Debug: Response structure:"
-              echo "$resp" | jq '.' 2>/dev/null | head -30 || echo "$resp" | head -30
-            fi
-          fi
-
-          if [ -z "${ROLLBACK_VERSION}" ] || [ "${ROLLBACK_VERSION}" = "null" ]; then
-            echo "ERROR: No previous version available. Automatic rollback is not possible."
-            echo "This might be the first deployment, or the worker has no previous versions."
-            echo "rollback_version=" >> $GITHUB_OUTPUT
-            exit 1
-          else
-            echo "Will rollback to version: ${ROLLBACK_VERSION}"
-            echo "rollback_version=${ROLLBACK_VERSION}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Install wrangler (for rollback)
-        run: |
-          npm ci
-          npm i -D wrangler@latest
-
-      - name: Rollback using wrangler
-        run: |
-          ROLLBACK_VER="${{ steps.get_prev_for_rollback.outputs.rollback_version }}"
-          if [ -z "${ROLLBACK_VER}" ]; then
-            echo "ERROR: No rollback version determined. Cannot proceed."
-            exit 1
-          fi
-          echo "Rolling back ${{ env.WORKER_NAME }} to version ${ROLLBACK_VER}"
-          # wrangler rollback <version-id> should create a new deployment pointing to the older version
-          npx wrangler rollback "${ROLLBACK_VER}" --name "${{ env.WORKER_NAME }}"
-
-      - name: Confirm rollback
-        run: |
-          # optional: query versions to ensure a deployed version exists
-          resp=$(curl -s -H "Authorization: Bearer $CF_API_TOKEN_PROD" \
-            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/versions")
-
-          # Check deployments endpoint for currently deployed version
-          deploy_resp=$(curl -s -H "Authorization: Bearer $CF_API_TOKEN_PROD" \
-            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/deployments" || echo "{}")
-
-          HAS_ITEMS=$(echo "$resp" | jq -e '.result.items != null' 2>/dev/null && echo "yes" || echo "no")
-          deployed=""
-
-          if [ "$HAS_ITEMS" = "yes" ]; then
-            # Try deployments endpoint first
-            deployed=$(echo "$deploy_resp" | jq -r '.result[] | select(.source == "upload") | .version_id' 2>/dev/null | head -n1 || true)
-            # Fallback: highest version number
-            if [ -z "$deployed" ] || [ "$deployed" = "null" ]; then
-              deployed=$(echo "$resp" | jq -r '.result.items | sort_by(.number) | reverse | .[0].id // empty' 2>/dev/null || true)
-            fi
-          else
-            # Legacy structure
-            RESULT_TYPE=$(echo "$resp" | jq -r 'if .result | type == "array" then "array" else "object" end' 2>/dev/null || echo "unknown")
-            if [ "$RESULT_TYPE" = "array" ]; then
-              deployed=$(echo "$resp" | jq -r '.result[0]?.id // empty' 2>/dev/null || true)
-            elif [ "$RESULT_TYPE" = "object" ]; then
-              deployed=$(echo "$resp" | jq -r '.result.id // empty' 2>/dev/null || true)
-            fi
-          fi
-
-          echo "Now deployed version: ${deployed:-unknown}"
+      - name: Rollback Cloudflare Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN_PROD }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: rollback --name ${{ env.WORKER_NAME }}

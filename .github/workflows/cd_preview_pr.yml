@@ -84,3 +84,5 @@ jobs:
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H "Content-Type: application/json" \
             || echo "Delete call failed or script not found (that's OK)."
+
+            

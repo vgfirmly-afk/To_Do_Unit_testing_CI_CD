@@ -36,7 +36,7 @@ jobs:
 
       # - name: Build
       #   run: |
-      #     npm run build         # change if your build script differs
+      #     npm run build         # change if your build script differs 
 
       - name: Install Wrangler CLI
         run: |

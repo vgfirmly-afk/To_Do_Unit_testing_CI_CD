@@ -3250,25 +3250,21 @@ var require_joi_browser_min = __commonJS({
                 (n.nameRx = /^[a-zA-Z0-9]\w*$/),
                 (n.rule = s.object({
                   alias: s.array().items(s.string().pattern(n.nameRx)).single(),
-                  args: s
-                    .array()
-                    .items(
-                      s.string(),
-                      s.object({
-                        name: s.string().pattern(n.nameRx).required(),
-                        ref: s.boolean(),
-                        assert: s
-                          .alternatives([s.function(), s.object().schema()])
-                          .conditional("ref", { is: true, then: s.required() }),
-                        normalize: s.function(),
-                        message: s
-                          .string()
-                          .when("assert", {
-                            is: s.function(),
-                            then: s.required(),
-                          }),
+                  args: s.array().items(
+                    s.string(),
+                    s.object({
+                      name: s.string().pattern(n.nameRx).required(),
+                      ref: s.boolean(),
+                      assert: s
+                        .alternatives([s.function(), s.object().schema()])
+                        .conditional("ref", { is: true, then: s.required() }),
+                      normalize: s.function(),
+                      message: s.string().when("assert", {
+                        is: s.function(),
+                        then: s.required(),
                       }),
-                    ),
+                    }),
+                  ),
                   convert: s.boolean(),
                   manifest: s.boolean(),
                   method: s.function().allow(false),
@@ -3281,22 +3277,17 @@ var require_joi_browser_min = __commonJS({
                       .alternatives([s.string(), s.object().regex()])
                       .required(),
                     args: s.function(),
-                    cast: s
-                      .object()
-                      .pattern(
-                        n.nameRx,
-                        s.object({
-                          from: s.function().maxArity(1).required(),
-                          to: s.function().minArity(1).maxArity(2).required(),
-                        }),
-                      ),
-                    base: s
-                      .object()
-                      .schema()
-                      .when("type", {
-                        is: s.object().regex(),
-                        then: s.forbidden(),
+                    cast: s.object().pattern(
+                      n.nameRx,
+                      s.object({
+                        from: s.function().maxArity(1).required(),
+                        to: s.function().minArity(1).maxArity(2).required(),
                       }),
+                    ),
+                    base: s.object().schema().when("type", {
+                      is: s.object().regex(),
+                      then: s.forbidden(),
+                    }),
                     coerce: [
                       s.function().maxArity(3),
                       s.object({
@@ -3319,27 +3310,23 @@ var require_joi_browser_min = __commonJS({
                     prepare: s.function().maxArity(3),
                     rebuild: s.function().arity(1),
                     rules: s.object().pattern(n.nameRx, n.rule),
-                    terms: s
-                      .object()
-                      .pattern(
-                        n.nameRx,
-                        s.object({
-                          init: s.array().allow(null).required(),
-                          manifest: s
-                            .object()
-                            .pattern(/.+/, [
-                              s.valid("schema", "single"),
-                              s.object({
-                                mapped: s
-                                  .object({
-                                    from: s.string().required(),
-                                    to: s.string().required(),
-                                  })
-                                  .required(),
-                              }),
-                            ]),
-                        }),
-                      ),
+                    terms: s.object().pattern(
+                      n.nameRx,
+                      s.object({
+                        init: s.array().allow(null).required(),
+                        manifest: s.object().pattern(/.+/, [
+                          s.valid("schema", "single"),
+                          s.object({
+                            mapped: s
+                              .object({
+                                from: s.string().required(),
+                                to: s.string().required(),
+                              })
+                              .required(),
+                          }),
+                        ]),
+                      }),
+                    ),
                     validate: s.function().maxArity(3),
                   })
                   .strict()),

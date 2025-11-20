@@ -36,14 +36,17 @@ jobs:
       #   run: |
       #     npm run build         # change if your build script differs
 
-      - name: Publish to Cloudflare Workers
-        id: publish
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN_PROD }} # injected from the production environment
-          command: deploy
-          # if you want a specific environment flag in wrangler:
-          # args: --env production
+      - name: Install Wrangler CLI
+        run: |
+          npm ci
+          npm install -g wrangler@4.49.0
+
+      - name: Publish to Cloudflare Workers (manual)
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN_PROD }}
+        run: |
+          wrangler --version
+          wrangler deploy
 
       - name: Output deployed worker url
         if: success()

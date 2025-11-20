@@ -1,0 +1,51 @@
+name: Deploy → Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read      # checkout
+  id-token: write     # only required if you use OIDC; otherwise safe to leave
+  # no need to allow secrets explicitly here; environment secrets are injected after approval
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production        # important: requires environment approval before secrets are available
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+
+      - name: Build
+        run: |
+          npm run build         # change if your build script differs
+
+      - name: Publish to Cloudflare Workers
+        id: publish
+        uses: cloudflare/wrangler-action@v1
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN_PROD }}   # injected from the production environment
+          command: deploy
+          # if you want a specific environment flag in wrangler:
+          # args: --env production
+
+      - name: Output deployed worker url
+        if: success()
+        run: |
+          echo "Published worker; see Wrangler action output above for URLs."

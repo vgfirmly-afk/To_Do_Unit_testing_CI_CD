@@ -16,7 +16,7 @@ jobs:
     if: ${{ github.event.action != 'closed' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
-
+    environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,7 +39,7 @@ jobs:
 
       # - name: Build (uncomment / change if you have a build step)
       #   run: npm run build
-        # if your project doesn't need build step, you can remove or comment this step
+      # if your project doesn't need build step, you can remove or comment this step
 
       - name: Create short SHA
         run: echo "SHORT_SHA=$(echo ${GITHUB_SHA} | cut -c1-7)" >> $GITHUB_ENV
@@ -68,6 +68,7 @@ jobs:
   cleanup:
     if: ${{ github.event.action == 'closed' }}
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Set up Node (for jq install on some runners)
         uses: actions/setup-node@v4

@@ -13,6 +13,7 @@ env:
   WORKER_NAME: todo-worker
   RETRIES: 6
   RETRY_DELAY_SEC: 5
+  HEALTH_URL : "https://todo-worker.vg-firmly.workers.dev/"
 
 jobs:
   save-prev-version:
@@ -61,7 +62,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: "18"
 
       - name: Install dependencies
         run: |
@@ -75,14 +76,14 @@ jobs:
   deploy:
     name: Deploy with wrangler
     runs-on: ubuntu-latest
-    needs: [ save-prev-version, run-tests ]
+    needs: [save-prev-version, run-tests]
     outputs:
       new_version: ${{ steps.get_new_ver.outputs.new_version }}
     environment: production
     env:
       CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
       CF_API_TOKEN_PROD: ${{ secrets.CF_API_TOKEN_PROD }}
-      WORKER_NAME: ${{ env.WORKER_NAME }}
+      WORKER_NAME: ${{ WORKER_NAME }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -128,8 +129,8 @@ jobs:
     environment: production
     env:
       HEALTH_URL: ${{ secrets.HEALTH_URL }}
-      RETRIES: ${{ env.RETRIES }}
-      RETRY_DELAY_SEC: ${{ env.RETRY_DELAY_SEC }}
+      RETRIES: ${{ RETRIES }}
+      RETRY_DELAY_SEC: ${{ RETRY_DELAY_SEC }}
     steps:
       - name: Simple health probe with retries
         id: probe

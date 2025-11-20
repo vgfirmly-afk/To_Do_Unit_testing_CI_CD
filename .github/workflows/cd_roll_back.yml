@@ -26,6 +26,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install jq (if needed)
+        run: |
+          if ! command -v jq &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+
       - name: Fetch previous active version id
         id: get_prev
         run: |
@@ -40,20 +46,46 @@ jobs:
           resp=$(curl -s -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN_PROD }}" \
             "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/${{ env.WORKER_NAME }}/versions")
 
-          # Debug: show the response (without sensitive data)
-          echo "API Response received (checking for errors)..."
+          # Debug: show response structure (safely)
+          echo "API Response structure check..."
+          echo "$resp" | jq 'keys' 2>/dev/null || echo "Response is not valid JSON or jq failed"
+          echo "$resp" | jq '.result | type' 2>/dev/null || echo "Could not determine result type"
+          
+          # Check for API errors
           if echo "$resp" | jq -e '.success == false' > /dev/null 2>&1; then
             echo "API Error: $(echo "$resp" | jq -r '.errors[0].message // "Unknown error"')"
+            echo "prev_version=" >> $GITHUB_OUTPUT
+            exit 0
           fi
 
-          # Try to get the currently deployed version
-          PREV=$(echo "$resp" | jq -r '.result[] | select(.deployed==true) | .id' | head -n1 || true)
+          # Try different approaches to get the deployed version
+          # First, check if result is an array
+          RESULT_TYPE=$(echo "$resp" | jq -r 'if .result | type == "array" then "array" else "object" end' 2>/dev/null || echo "unknown")
+          echo "Result type: $RESULT_TYPE"
+
+          PREV=""
+          
+          if [ "$RESULT_TYPE" = "array" ]; then
+            # If result is an array, try to find deployed version
+            PREV=$(echo "$resp" | jq -r '.result[]? | select(type == "object" and .deployed == true) | .id' 2>/dev/null | head -n1 || true)
+            
+            # If that didn't work, try without the deployed filter (maybe all are deployed or structure is different)
+            if [ -z "$PREV" ] || [ "$PREV" = "null" ]; then
+              echo "Trying alternative: getting first version ID..."
+              PREV=$(echo "$resp" | jq -r '.result[0]?.id // empty' 2>/dev/null || true)
+            fi
+          elif [ "$RESULT_TYPE" = "object" ]; then
+            # If result is an object, try to get id directly
+            PREV=$(echo "$resp" | jq -r '.result.id // empty' 2>/dev/null || true)
+          else
+            # Try to get any version ID from the response
+            PREV=$(echo "$resp" | jq -r '.. | objects | select(.id != null) | .id' 2>/dev/null | head -n1 || true)
+          fi
 
           if [ -z "$PREV" ] || [ "$PREV" = "null" ]; then
             echo "No active deployed version found."
-            echo "Checking all versions..."
-            # Debug: show all versions
-            echo "$resp" | jq -r '.result[] | "Version: \(.id), Deployed: \(.deployed)"' || true
+            echo "Debug: Full response structure:"
+            echo "$resp" | jq '.' 2>/dev/null | head -50 || echo "$resp" | head -50
             echo "prev_version=" >> $GITHUB_OUTPUT
           else
             echo "Found previous version: $PREV"
@@ -102,6 +134,12 @@ jobs:
           npm ci
           npm i -D wrangler@latest
 
+      - name: Install jq (if needed)
+        run: |
+          if ! command -v jq &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+
       - name: Deploy
         id: deploy_step
         run: |
@@ -118,10 +156,27 @@ jobs:
           # After deploy, query latest deployed version id
           resp=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/versions")
-          NEW=$(echo "$resp" | jq -r '.result[] | select(.deployed==true) | .id' | head -n1 || true)
+          
+          # Try different approaches to get the deployed version
+          RESULT_TYPE=$(echo "$resp" | jq -r 'if .result | type == "array" then "array" else "object" end' 2>/dev/null || echo "unknown")
+          NEW=""
+          
+          if [ "$RESULT_TYPE" = "array" ]; then
+            NEW=$(echo "$resp" | jq -r '.result[]? | select(type == "object" and .deployed == true) | .id' 2>/dev/null | head -n1 || true)
+            if [ -z "$NEW" ] || [ "$NEW" = "null" ]; then
+              NEW=$(echo "$resp" | jq -r '.result[0]?.id // empty' 2>/dev/null || true)
+            fi
+          elif [ "$RESULT_TYPE" = "object" ]; then
+            NEW=$(echo "$resp" | jq -r '.result.id // empty' 2>/dev/null || true)
+          else
+            NEW=$(echo "$resp" | jq -r '.. | objects | select(.id != null) | .id' 2>/dev/null | head -n1 || true)
+          fi
+          
           if [ -z "$NEW" ] || [ "$NEW" = "null" ]; then
+            echo "Could not determine new version from API response"
             echo "new_version=" >> $GITHUB_OUTPUT
           else
+            echo "New deployed version: $NEW"
             echo "new_version=$NEW" >> $GITHUB_OUTPUT
           fi
 
@@ -205,7 +260,7 @@ jobs:
         run: |
           set -e
           ROLLBACK_VERSION="${PREV_VERSION}"
-          
+
           # If we don't have a saved previous version, try to find it
           if [ -z "${ROLLBACK_VERSION}" ]; then
             echo "No previous version was saved. Attempting to find previous version..."
@@ -228,28 +283,57 @@ jobs:
               exit 1
             fi
             
+            # Determine response structure
+            RESULT_TYPE=$(echo "$resp" | jq -r 'if .result | type == "array" then "array" else "object" end' 2>/dev/null || echo "unknown")
+            echo "API response type: $RESULT_TYPE"
+            
             # Get the currently deployed version (should be NEW_VERSION from deploy job)
             CURRENT="${NEW_VERSION}"
             echo "Current deployed version from deploy job: ${CURRENT}"
             
             # Get all deployed versions, excluding the current one
-            if [ -n "${CURRENT}" ] && [ "${CURRENT}" != "null" ]; then
-              # Get all deployed versions except the current one
-              ROLLBACK_VERSION=$(echo "$resp" | jq -r --arg current "${CURRENT}" '.result[] | select(.deployed==true and .id != $current) | .id' | head -n1 || true)
+            if [ "$RESULT_TYPE" = "array" ]; then
+              if [ -n "${CURRENT}" ] && [ "${CURRENT}" != "null" ]; then
+                # Get all versions except the current one
+                ROLLBACK_VERSION=$(echo "$resp" | jq -r --arg current "${CURRENT}" '.result[]? | select(type == "object" and .id != null and .id != $current) | .id' 2>/dev/null | head -n1 || true)
+              fi
+              
+              # If still empty, try getting the second version in the array
+              if [ -z "${ROLLBACK_VERSION}" ] || [ "${ROLLBACK_VERSION}" = "null" ]; then
+                ALL_IDS=$(echo "$resp" | jq -r '.result[]? | select(.id != null) | .id' 2>/dev/null)
+                if [ -n "${CURRENT}" ] && [ "${CURRENT}" != "null" ]; then
+                  ROLLBACK_VERSION=$(echo "$ALL_IDS" | grep -v "^${CURRENT}$" | head -n1 || true)
+                else
+                  ROLLBACK_VERSION=$(echo "$ALL_IDS" | head -n2 | tail -n1 || true)
+                fi
+              fi
+            elif [ "$RESULT_TYPE" = "object" ]; then
+              # If result is a single object
+              if [ -n "${CURRENT}" ] && [ "${CURRENT}" != "null" ]; then
+                OBJ_ID=$(echo "$resp" | jq -r '.result.id // empty' 2>/dev/null || true)
+                if [ "$OBJ_ID" != "${CURRENT}" ]; then
+                  ROLLBACK_VERSION="$OBJ_ID"
+                fi
+              else
+                ROLLBACK_VERSION=$(echo "$resp" | jq -r '.result.id // empty' 2>/dev/null || true)
+              fi
             else
-              # If we don't know the current version, get the most recent deployed version
-              # (which should be the one we just deployed, so we want the second one)
-              ALL_DEPLOYED=$(echo "$resp" | jq -r '.result[] | select(.deployed==true) | .id')
-              ROLLBACK_VERSION=$(echo "$ALL_DEPLOYED" | head -n2 | tail -n1 || true)
+              # Fallback: try to extract any version ID
+              ALL_IDS=$(echo "$resp" | jq -r '.. | objects | select(.id != null) | .id' 2>/dev/null | sort -u)
+              if [ -n "${CURRENT}" ] && [ "${CURRENT}" != "null" ]; then
+                ROLLBACK_VERSION=$(echo "$ALL_IDS" | grep -v "^${CURRENT}$" | head -n1 || true)
+              else
+                ROLLBACK_VERSION=$(echo "$ALL_IDS" | head -n2 | tail -n1 || true)
+              fi
             fi
             
             if [ -z "${ROLLBACK_VERSION}" ] || [ "${ROLLBACK_VERSION}" = "null" ]; then
               echo "WARNING: Could not find a previous version to rollback to."
-              echo "Debug: Listing all versions..."
-              echo "$resp" | jq -r '.result[] | "ID: \(.id), Deployed: \(.deployed)"' || true
+              echo "Debug: Response structure:"
+              echo "$resp" | jq '.' 2>/dev/null | head -30 || echo "$resp" | head -30
             fi
           fi
-          
+
           if [ -z "${ROLLBACK_VERSION}" ] || [ "${ROLLBACK_VERSION}" = "null" ]; then
             echo "ERROR: No previous version available. Automatic rollback is not possible."
             echo "This might be the first deployment, or the worker has no previous versions."
@@ -281,5 +365,19 @@ jobs:
           # optional: query versions to ensure a deployed version exists
           resp=$(curl -s -H "Authorization: Bearer $CF_API_TOKEN_PROD" \
             "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/versions")
-          deployed=$(echo "$resp" | jq -r '.result[] | select(.deployed==true) | .id' | head -n1 || true)
-          echo "Now deployed version: $deployed"
+          
+          RESULT_TYPE=$(echo "$resp" | jq -r 'if .result | type == "array" then "array" else "object" end' 2>/dev/null || echo "unknown")
+          deployed=""
+          
+          if [ "$RESULT_TYPE" = "array" ]; then
+            deployed=$(echo "$resp" | jq -r '.result[]? | select(type == "object" and .deployed == true) | .id' 2>/dev/null | head -n1 || true)
+            if [ -z "$deployed" ] || [ "$deployed" = "null" ]; then
+              deployed=$(echo "$resp" | jq -r '.result[0]?.id // empty' 2>/dev/null || true)
+            fi
+          elif [ "$RESULT_TYPE" = "object" ]; then
+            deployed=$(echo "$resp" | jq -r '.result.id // empty' 2>/dev/null || true)
+          else
+            deployed=$(echo "$resp" | jq -r '.. | objects | select(.id != null) | .id' 2>/dev/null | head -n1 || true)
+          fi
+          
+          echo "Now deployed version: ${deployed:-unknown}"

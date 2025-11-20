@@ -2,10 +2,8 @@ name: Roll Back Cloudflare Worker on Failed Health Check
 
 on:
   push:
-    branches: 
+    branches:
       - features/CD
-
-
 
 env:
   WORKER_NAME: todo-worker

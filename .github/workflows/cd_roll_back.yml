@@ -96,7 +96,7 @@ jobs:
         id: deploy_step
         run: |
           set -e
-          if [ -z "$CF_API_TOKEN_PROD" ] || [ -z "$CF_ACCOUNT_ID" ]; then
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "CF secrets not present — aborting deploy."
             exit 1
           fi
@@ -106,8 +106,8 @@ jobs:
           npx wrangler deploy --name "${{ env.WORKER_NAME }}"
 
           # After deploy, query latest deployed version id
-          resp=$(curl -s -H "Authorization: Bearer $CF_API_TOKEN_PROD" \
-            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/versions")
+          resp=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${{ env.WORKER_NAME }}/versions")
           NEW=$(echo "$resp" | jq -r '.result[] | select(.deployed==true) | .id' | head -n1 || true)
           if [ -z "$NEW" ] || [ "$NEW" = "null" ]; then
             echo "new_version=" >> $GITHUB_OUTPUT

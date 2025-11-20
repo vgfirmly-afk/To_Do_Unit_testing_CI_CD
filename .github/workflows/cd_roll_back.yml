@@ -116,3 +116,132 @@ jobs:
           apiToken: ${{ secrets.CF_API_TOKEN_PROD }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           command: rollback --name ${{ env.WORKER_NAME }}
+
+  notify-slack:
+    name: Send deployment status to Slack
+    runs-on: ubuntu-latest
+    needs: [health-check, rollback]
+    if: always()
+    environment: production
+    steps:
+      - name: Generate short SHA
+        id: sha
+        run: echo "short_sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Determine deployment status
+        id: status
+        run: |
+          if [ "${{ needs.health-check.outputs.health_ok }}" = "true" ]; then
+            echo "deployment_status=healthy" >> $GITHUB_OUTPUT
+            echo "message=✅ New deployment is healthy and running successfully" >> $GITHUB_OUTPUT
+            echo "color=good" >> $GITHUB_OUTPUT
+          elif [ "${{ needs.rollback.result }}" = "success" ]; then
+            echo "deployment_status=rolled_back" >> $GITHUB_OUTPUT
+            echo "message=⚠️ Deployment health check failed. Successfully rolled back to previous version" >> $GITHUB_OUTPUT
+            echo "color=warning" >> $GITHUB_OUTPUT
+          elif [ "${{ needs.rollback.result }}" = "skipped" ]; then
+            echo "deployment_status=failed" >> $GITHUB_OUTPUT
+            echo "message=❌ Deployment health check failed but rollback was skipped" >> $GITHUB_OUTPUT
+            echo "color=danger" >> $GITHUB_OUTPUT
+          else
+            echo "deployment_status=failed" >> $GITHUB_OUTPUT
+            echo "message=❌ Deployment health check failed and rollback was not executed" >> $GITHUB_OUTPUT
+            echo "color=danger" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack notification
+        run: |
+          SHORT_SHA="${{ steps.sha.outputs.short_sha }}"
+          STATUS_MSG="${{ steps.status.outputs.message }}"
+          COLOR="${{ steps.status.outputs.color }}"
+          WORKER_NAME="${{ env.WORKER_NAME }}"
+          HEALTH_URL="${{ env.HEALTH_URL }}"
+          REPO="${{ github.repository }}"
+          BRANCH="${{ github.ref_name }}"
+          ACTOR="${{ github.actor }}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          COMMIT_URL="https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
+          
+          PAYLOAD=$(jq -n \
+            --arg text "Deployment Status: ${WORKER_NAME}" \
+            --arg worker_name "${WORKER_NAME}" \
+            --arg repo "${REPO}" \
+            --arg branch "${BRANCH}" \
+            --arg commit_url "${COMMIT_URL}" \
+            --arg short_sha "${SHORT_SHA}" \
+            --arg run_url "${RUN_URL}" \
+            --arg status_msg "${STATUS_MSG}" \
+            --arg actor "${ACTOR}" \
+            --arg color "${COLOR}" \
+            --arg health_url "${HEALTH_URL}" \
+            '{
+              text: $text,
+              blocks: [
+                {
+                  type: "header",
+                  text: {
+                    type: "plain_text",
+                    text: "🚀 Deployment Status: \($worker_name)"
+                  }
+                },
+                {
+                  type: "section",
+                  fields: [
+                    {
+                      type: "mrkdwn",
+                      text: "*Repository:*\n\($repo)"
+                    },
+                    {
+                      type: "mrkdwn",
+                      text: "*Branch:*\n\($branch)"
+                    },
+                    {
+                      type: "mrkdwn",
+                      text: "*Commit:*\n<\($commit_url)|\($short_sha)>"
+                    },
+                    {
+                      type: "mrkdwn",
+                      text: "*Workflow:*\n<\($run_url)|View Run>"
+                    }
+                  ]
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: "*Status:*\n\($status_msg)"
+                  }
+                },
+                {
+                  type: "context",
+                  elements: [
+                    {
+                      type: "mrkdwn",
+                      text: "Deployed by: \($actor)"
+                    }
+                  ]
+                }
+              ],
+              attachments: [
+                {
+                  color: $color,
+                  fields: [
+                    {
+                      title: "Worker Name",
+                      value: $worker_name,
+                      short: true
+                    },
+                    {
+                      title: "Health URL",
+                      value: $health_url,
+                      short: true
+                    }
+                  ]
+                }
+              ]
+            }')
+          
+          curl -X POST -H 'Content-type: application/json' \
+            --data "${PAYLOAD}" \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()

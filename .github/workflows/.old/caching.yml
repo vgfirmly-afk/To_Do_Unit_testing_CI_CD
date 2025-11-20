@@ -1,0 +1,42 @@
+# name: caching
+# on:
+#   push:
+#     bramches:
+#       - main
+#       - features/new-branch
+#   pull_request:
+#     # branches:
+#     # - "**"
+#   # pull_request:
+#   #   branches:
+#   #     - main
+# jobs:
+#   caching_artifacting_job:
+#     runs-on: ubuntu-latest
+#     strategy:
+#       matrix:
+#         node-version: ["18", "24"]
+#     steps:
+#       - name: checkout repo
+#         uses: actions/checkout@v4
+#       - name: Setup Node.js and cache npm
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: ${{ matrix.node-version }}
+#           cache: "npm"
+#           cache-dependency-path: package-lock.json
+#       # - name: Restore npm cache & node_modules (explicit)
+#       #   with:
+#       #     path: |
+#       #       ~/.npm
+#       #       node_modules
+#       #     key: npm-${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('package-lock.json') }}
+#       #     restore-keys: |
+#       #       npm-${{ runner.os }}-node-${{ matrix.node-version }}-
+#       #       npm-${{ runner.os }}-node-
+#       - name: Install dependencies
+#         run: npm ci
+#       - name: Run tests
+#         run: npm test
+#       - name: Run coverage check
+#         run: npm run coverage:check

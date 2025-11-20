@@ -8,7 +8,7 @@ jobs:
     runs-on: self-hosted
     steps:
       - name: Sample step
-        run: echo "This is a sample job." > "My-file-SelfHost.txt"
+        run: echo "This is a sample job."
   test:
     # runs-on: ubuntu-latest
     runs-on: self-hosted

@@ -2,12 +2,30 @@ name = "todo-worker"
 compatibility_date = "2025-11-11"
 main = "src/index.js"
 type="javascript"
+workers_dev = false
 
-[env]
+[env.staging]
+# override values for staging
+# e.g. d1 binding for staging if different
+# [[d1_databases]]
+# binding = "mydb"
+# database_name = "ecommerce_task_w1_db"
+# database_id = "91b662bb-c5f8-48fe-a9ea-d055f93a3f1e"
+
+# [env.production]
+# [[d1_databases]]
+# binding = "mydb"
+# database_name = "ecommerce_task_db"
+# database_id = "46d1d640-172d-4cfc-bd91-fba867c60733"
+
+
 # nothing here — bind your D1 database and other bindings in your wrangler dev/publish config
 
+[env.production]
+name = "my_todo"        # worker name for production
+route = ""               # optional: route to attach (e.g. example.com/*)
 
-# Example
+#[env.dev]
 [[d1_databases]]
 binding = "mydb"
 database_name = "ecommerce_task_db"

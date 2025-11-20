@@ -14,8 +14,7 @@ permissions:
   contents: read # checkout
   id-token: write # only required if you use OIDC; otherwise safe to leave
   # no need to allow secrets explicitly here; environment secrets are injected after approval
-env:
-  CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_PROD }}
+
 
 jobs:
   build-and-deploy:
@@ -36,19 +35,16 @@ jobs:
 
       # - name: Build
       #   run: |
-      #     npm run build         # change if your build script differs 
+      #     npm run build         # change if your build script differs
 
       - name: Install Wrangler CLI
         run: |
           npm ci
           npm install -g wrangler@4.49.0
-      - name: Secret Check
-        run: echo "The secret MY_SECRET_VALUE is -----> $CLOUDFLARE_API_TOKEN"
       - name: Publish to Cloudflare Workers (manual)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN_PROD }}
         run: |
-          echo CLOUDFLARE_API_TOKEN
           wrangler --version
           wrangler deploy
 

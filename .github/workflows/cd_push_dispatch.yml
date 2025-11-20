@@ -38,7 +38,7 @@ jobs:
 
       - name: Publish to Cloudflare Workers
         id: publish
-        uses: cloudflare/wrangler-action@v1
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN_PROD }} # injected from the production environment
           command: deploy

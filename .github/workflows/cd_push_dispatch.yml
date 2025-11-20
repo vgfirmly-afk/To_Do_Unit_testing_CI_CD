@@ -15,7 +15,6 @@ permissions:
   id-token: write # only required if you use OIDC; otherwise safe to leave
   # no need to allow secrets explicitly here; environment secrets are injected after approval
 
-
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest

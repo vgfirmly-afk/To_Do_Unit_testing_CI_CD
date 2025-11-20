@@ -52,7 +52,7 @@ jobs:
       - name: Deploy preview with Wrangler (deploy is recommended)
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.CF_API_TOKEN_PROD }}
           command: deploy --name ${{ env.PREVIEW_NAME }}
 
       # - name: Comment preview URL on PR (create or update)
@@ -84,7 +84,7 @@ jobs:
 
       - name: Delete preview workers for this PR (all matching prefix)
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_API_TOKEN_PROD: ${{ secrets.CF_API_TOKEN_PROD }}
           ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PREFIX: ${{ env.PREVIEW_PREFIX }}-${{ github.event.number }}-
         run: |
@@ -97,7 +97,7 @@ jobs:
           # List scripts and delete ones that start with the PR prefix.
           # The list endpoint returns result[] objects; we'll extract their 'id' or 'name' field (fallback).
           SCRIPTS_JSON=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/workers/scripts" \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Authorization: Bearer $CF_API_TOKEN_PROD" \
             -H "Content-Type: application/json")
 
           if [ -z "$SCRIPTS_JSON" ]; then
@@ -118,7 +118,7 @@ jobs:
               echo "Deleting script: $id"
               curl --silent --show-error --fail -X DELETE \
                 "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/workers/scripts/$id" \
-                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                -H "Authorization: Bearer $CF_API_TOKEN_PROD" \
                 -H "Content-Type: application/json" \
                 || echo "Delete failed for $id (it may not exist)."
             fi

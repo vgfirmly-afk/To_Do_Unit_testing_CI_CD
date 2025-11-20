@@ -2,7 +2,7 @@ name: Roll Back Cloudflare Worker on Failed Health Check
 
 on:
   push:
-    # branches: [ main ]
+    branches: [ features/CD ]
 
 # minimal repo permissions; adjust if you need to write artifacts etc.
 permissions:
@@ -13,7 +13,7 @@ env:
   WORKER_NAME: todo-worker
   RETRIES: 6
   RETRY_DELAY_SEC: 5
-  HEALTH_URL : "https://todo-worker.vg-firmly.workers.dev/"
+  HEALTH_URL: "https://todo-worker.vg-firmly.workers.dev/"
 
 jobs:
   save-prev-version:

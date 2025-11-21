@@ -42,6 +42,7 @@ jobs:
       - name: Run tests
         run: |
           npm test
+          
       # this job will fail the workflow if tests fail
       # - name: Build (uncomment / change if you have a build step)
       #   run: npm run build

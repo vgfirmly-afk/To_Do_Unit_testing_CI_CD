@@ -39,6 +39,11 @@ jobs:
           npm ci
           npm install -g wrangler@4.49.0
 
+      - name: Run tests
+        run: |
+          npm test
+
+      # this job will fail the workflow if tests fail
       # - name: Build (uncomment / change if you have a build step)
       #   run: npm run build
       # if your project doesn't need build step, you can remove or comment this step

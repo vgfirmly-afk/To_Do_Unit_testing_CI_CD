@@ -3,7 +3,7 @@ name: Roll Back Cloudflare Worker on Failed Health Check
 on:
   push:
     branches:
-      - features/CD
+      - main
 
 env:
   WORKER_NAME: todo-worker
@@ -240,7 +240,7 @@ jobs:
                 }
               ]
             }')
-
+ 
           curl -X POST -H 'Content-type: application/json' \
             --data "${PAYLOAD}" \
             ${{ secrets.SLACK_WEBHOOK_URL }}
